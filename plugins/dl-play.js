@@ -1,72 +1,169 @@
+import fetch from "node-fetch";
+import ytdl from 'youtubedl-core';
+import yts from 'youtube-yts';
+import fs from 'fs';
+import { pipeline } from 'stream';
+import { promisify } from 'util';
+import os from 'os';
 
-import { youtubedl, youtubedlv2 } from '@bochilteam/scraper'
-import yts from 'yt-search'
-var handler = async (m, { conn, command, text, usedPrefix }) => {
-  if (!text) throw `Use example ${usedPrefix}${command} naruto blue bird`
-  await m.reply(wait)
-  let search = await yts(text)
-  let vid = search.videos[Math.floor(Math.random() * search.videos.length)]
-  if (!search) throw 'Video Not Found, Try Another Title'
-  let { title, thumbnail, timestamp, views, ago, url } = vid
-  let wm = 'Downloading audio please wait'
+const streamPipeline = promisify(pipeline);
 
-  let captvid = `╭──── 〔 Y O U T U B E 〕 ─⬣
-⬡ Title: ${title}
-⬡ Duration: ${timestamp}
-⬡ Views: ${views}
-⬡ Upload: ${ago}
-⬡ Link: ${url}
-╰────────⬣`
-  conn.sendButton(m.chat, `╭──── 〔 Y O U T U B E 〕 ─⬣
-⬡ Title: ${title}
-⬡ Duration: ${timestamp}
-⬡ Views: ${views}
-⬡ Upload: ${ago}
-⬡ Link: ${url}
-╰────────⬣`, author.trim(), await( await conn.getFile(thumbnail)).data, ['VIDEO', `${usedPrefix}ytmp4 ${url}`], false, { quoted: m, 'document': { 'url':'https://wa.me/917605902011' },
-'mimetype': global.dpdf,
-'fileName': `𝔾𝕌ℝ𝕌 ℙ𝕃𝔸𝕐𝔼ℝ`,
-'fileLength': 666666666666666,
-'pageCount': 666,contextInfo: { externalAdReply: { showAdAttribution: true,
-mediaType:  2,
-mediaUrl: `${url}`,
-title: `AUDIO IS BEING SENT...`,
-body: wm,
-sourceUrl: 'http://wa.me/917605902011', thumbnail: await ( await conn.getFile(thumbnail)).data
-  }
- } 
-})
-  
-  //let buttons = [{ buttonText: { displayText: '📽VIDEO' }, buttonId: `${usedPrefix}ytv ${url} 360` }]
- //let msg = await conn.sendMessage(m.chat, { image: { url: thumbnail }, caption: captvid, footer: author, buttons }, { quoted: m })
+const handler = async (m, {
+    conn,
+    command,
+    text,
+    args,
+    usedPrefix
+}) => {
+    if (!text) throw `give a text to search Example: *${usedPrefix + command}* sefali odia song`;
+    conn.GURUPLAY = conn.GURUPLAY ? conn.GURUPLAY : {};
+    await conn.reply(m.chat, wait, m);
+    const result = await searchAndDownloadMusic(text);
+    const infoText = `✦ ──『 *GURU PLAYER* 』── ⚝ \n\n [ ⭐ Reply the number of the desired search result to get the Audio]. \n\n` ;
 
-  const yt = await youtubedlv2(url).catch(async _ => await youtubedl(url))
-const link = await yt.audio['128kbps'].download()
-  let doc = { 
-  audio: 
-  { 
-    url: link 
-}, 
-mimetype: 'audio/mp4', fileName: `${title}`, contextInfo: { externalAdReply: { showAdAttribution: true,
-mediaType:  2,
-mediaUrl: url,
-title: title,
-body: wm,
-sourceUrl: url,
-thumbnail: await(await conn.getFile(thumbnail)).data                                                                     
-                                                                                                                 }
-                       }
-  }
+const orderedLinks = result.allLinks.map((link, index) => {
+    const sectionNumber = index + 1;
+    const {
+        title,
+        url
+    } = link;
+    return `*${sectionNumber}.* ${title}`;
+});
 
-  return conn.sendMessage(m.chat, doc, { quoted: m })
-	// return conn.sendMessage(m.chat, { document: { url: link }, mimetype: 'audio/mpeg', fileName: `${title}.mp3`}, { quoted: m})
-	// return await conn.sendFile(m.chat, link, title + '.mp3', '', m, false, { asDocument: true })
+    const orderedLinksText = orderedLinks.join("\n\n");
+    const fullText = `${infoText}\n\n${orderedLinksText}`;
+    const {
+        key
+    } = await conn.reply(m.chat, fullText, m);
+    conn.GURUPLAY[m.sender] = {
+        result,
+        key,
+        timeout: setTimeout(() => {
+            conn.sendMessage(m.chat, {
+                delete: key
+            });
+            delete conn.GURUPLAY[m.sender];
+        }, 150 * 1000),
+    };
+};
+
+handler.before = async (m, {
+    conn
+}) => {
+    conn.GURUPLAY = conn.GURUPLAY ? conn.GURUPLAY : {};
+    if (m.isBaileys || !(m.sender in conn.GURUPLAY)) return;
+    const {
+        result,
+        key,
+        timeout
+    } = conn.GURUPLAY[m.sender];
+   
+    if (!m.quoted || m.quoted.id !== key.id || !m.text) return;
+    const choice = m.text.trim();
+    const inputNumber = Number(choice);
+    if (inputNumber >= 1 && inputNumber <= result.allLinks.length) {
+        const selectedUrl = result.allLinks[inputNumber - 1].url;
+        console.log("selectedUrl", selectedUrl)
+    let title = generateRandomName();
+        const audioStream = ytdl(selectedUrl, {
+            filter: 'audioonly',
+            quality: 'highestaudio',
+        });
+    
+      
+        
+        const tmpDir = os.tmpdir();
+        
+        
+        const writableStream = fs.createWriteStream(`${tmpDir}/${title}.mp3`);
+    
+        
+        await streamPipeline(audioStream, writableStream);
+
+        const doc = {
+            audio: {
+            url: `${tmpDir}/${title}.mp3`
+            },
+            mimetype: 'audio/mpeg',
+            ptt: false,
+            waveform: [100, 0, 0, 0, 0, 0, 100],
+            fileName: `${title}`,
+        
+        };
+    
+        await conn.sendMessage(m.chat, doc, { quoted: m });
+    
+    
+       
+
+        
+    } else {
+        m.reply("Invalid sequence number. Please select the appropriate number from the list above.\nBetween 1 to " + result.allLinks.length);
+    }
+};
+
+handler.help = ["play"];
+handler.tags = ["downloader"];
+handler.command = /^(play)$/i;
+handler.limit = true;
+export default handler;
+
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
-handler.help = ['play'].map(v => v + ' <query>')
-handler.tags = ['downloader']
-handler.command = /^play$/i
 
-handler.exp = 0
-handler.diamond = false
+async function searchAndDownloadMusic(query) {
+    try {
+        const { videos } = await yts(query);
+        if (!videos.length) return "Sorry, no video results were found for this search.";
 
-export default handler
+        const allLinks = videos.map(video => ({
+            title: video.title,
+            url: video.url,
+        }));
+
+        const jsonData = {
+            title: videos[0].title,
+            description: videos[0].description,
+            duration: videos[0].duration,
+            author: videos[0].author.name,
+            allLinks: allLinks,
+            videoUrl: videos[0].url,
+            thumbnail: videos[0].thumbnail,
+        };
+
+        return jsonData;
+    } catch (error) {
+        return "Error: " + error.message;
+    }
+}
+
+
+async function fetchVideoBuffer() {
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Access-Control-Allow-Origin': '*'
+            }
+        });
+        return await response.buffer();
+    } catch (error) {
+        return null;
+    }
+}
+
+function generateRandomName() {
+    const adjectives = ["happy", "sad", "funny", "brave", "clever", "kind", "silly", "wise", "gentle", "bold"];
+    const nouns = ["cat", "dog", "bird", "tree", "river", "mountain", "sun", "moon", "star", "cloud"];
+    
+    const randomAdjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+    
+    return randomAdjective + "-" + randomNoun;
+}

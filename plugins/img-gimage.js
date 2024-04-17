@@ -1,29 +1,44 @@
+import fetch from 'node-fetch';
 
-import { promisify } from 'util'
-import _gis from 'g-i-s'
-let gis = promisify(_gis)
+let handler = async (m, { conn, text, usedPrefix, command }) => {
+  if (!text && !(m.quoted && m.quoted.text)) {
+    throw `Please provide some text , Example usage ${usedPrefix}img sunnyleone`;
+  }
+  if (!text && m.quoted && m.quoted.text) {
+    text = m.quoted.text;
+  }
 
-let handler  = async (m, { conn, args, text, usedPrefix, command }) => {
-  if (!text) throw `✳️ Enter the image you want to search for \n\n📌 Example: *${usedPrefix + command}* Billie Eilish`
-  let results = await gis(text) || []
-  let { url, width, height } = pickRandom(results) || {}
-  if (!url) throw '❎ image not found try another'
-  conn.sendFile(m.chat, url, 'img.png', `
-✅ Result : *${text}*
+  const match = text.match(/(\d+)/);
+  const numberOfImages = match ? parseInt(match[1]) : 1;
 
-⏣ *width*: ${width}
-⏣ *height*: ${height}
-`.trim(), m)
-}
-handler.help = ['imagen']
-handler.tags = ['img']
-handler.command = /^(img|image|gimage|imagen)$/i
-handler.diamond = true
+  try {
+    m.reply('*Please wait*');
 
-export default handler
+    const images = [];
 
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)]
-}
+    for (let i = 0; i < numberOfImages; i++) {
+      const endpoint = `https://api.guruapi.tech/api/googleimage?text=${encodeURIComponent(text)}`;
+      const response = await fetch(endpoint);
+
+      if (response.ok) {
+        const imageBuffer = await response.buffer();
+        images.push(imageBuffer);
+      } else {
+        throw '*Image generation failed*';
+      }
+    }
 
 
+    for (let i = 0; i < images.length; i++) {
+      await conn.sendFile(m.chat, images[i], `image_${i + 1}.png`, null, m);
+    }
+  } catch {
+    throw '*Oops! Something went wrong while generating images. Please try again later.*';
+  }
+};
+
+handler.help = ['image'];
+handler.tags = ['fun'];
+handler.command = ['img', 'gimage'];
+
+export default handler;
